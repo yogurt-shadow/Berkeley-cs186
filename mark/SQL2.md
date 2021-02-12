@@ -176,18 +176,207 @@ WHERE S.rating > ANY
     WHERE S2.sname = 'Popeye')
 ```
 
+#### A Tough One: "Division"
++ Relational Division: "Find sailors who've reserved all boats."
++ Said differently: "sailors with no counterexample missing boats"
 
+```SQL
+SELECT S.sname
+FROM Sailors S
+WHERE NOT EXISTS
+    (SELECT B.bid
+    FROM Boats B
+    WHERE NOT EXISTS (SELECT R.bid
+                     FROM Reserves R
+                     WHERE R.bid = B.bid
+                     AND R.sid = s.sid ))
+```
 
+#### Find sailor with the highest rating (ARGMAX)
+```SQL
+SELECT *
+FROM Sailors S
+WHERE S.rating >= ALL
+    (SELECT S2.rating
+    FROM Sailors S2)
+  
+SELECT *
+FROM Sailors S
+WHERE S.rating = 
+    (SELECT MAX(S2.rating)
+    FROM Sailors S2)
+```
+***
+#### Inner Joins
+```SQL
+SELECT s.*, r.bid
+FROM Sailors S, Reserves r
+WHERE s.sid = r.sid
+AND ...
 
+SELECT s.*, r.bid
+FROM Sailors s INNER JOIN Reserves r
+ON s.sid = r.sid
+WHERE ... 
+```
 
+#### Join Variants
+```SQL
+SELECT <column expression list>
+FROM table_name
+[INNER | NATURAL
+  | {LEFT | RIGHT | FULL } {OUTER}] JOIN
+  table_name
+  ON <qualification_list>
+WHERE ...
+```
++ **NATURAL** means equi-join for pairs of attributes with the same name
++ **LEFT OUTER JOIN**: return s all matched rows and preserves all unmatched rows from the table on the left of the join
+    + use nulls in fields of non-matching tuples
+    + ```SQL
+      SELECT s.sid, s.sname, r.bid
+      FROM Sailors2 s LEFT OUTER JOIN Reserves2 r
+      ON s.sid = r.sid;
+      ```
++ **RIGHT OUTER JOIN**: return s all matched rows and preserves all unmatched rows from the table on the right of the join
+    + ```SQL
+      SELECT r.sid, b.bid, b.bname
+      FROM Reserves2 r RIGHT OUTER JOIN Boats2 b
+      ON r.bid = b.bid
+      ```
++ **FULL OUTER JOIN**: returns all (matched or unmatched) rows from the tables on both sides of the join
+    + ```SQL
+      SELECT r.sid, b.bid, b.bname
+      FROM Reserves2 r FULL OUTER JOIN Boats2 b
+      ON r.bid = b.bid
+      ```
+    + returns all boats and all information on reservations
 
+***
+#### Views: Names Queries
+```SQL
+CREATE VIEW view_name
+AS select_statement
+```
++ makes development simpler
++ often used for security
++ not "materialized"
 
+```SQL
+CREATE VIEW Redcount
+AS SELECT B.bid, COUNT(*) AS scount
+    FROM Boats2 B, Reserves2 R
+    WHERE R.bid = B.bid AND B.color = 'red'
+    GROUP BY B.bid
+    
+SELECT * FROM Redcount;
 
+SELECT bname, scount
+FROM Redcount R, Boats2 B
+WHERE R.bid = B.bid
+AND scout < 10;
+```
+---
+#### WITH a.k.a. common table expression (CTE)
+```SQL
+WITH Reds(bid, scount) AS
+(SELECT B.bid, COUNT(*)
+FROM Boats2 B, Reserves2 R
+WHERE R.bid = B.bid AND B.color = 'red'
+GROUP BY B.bid)
 
+SELECT bname, scount
+FROM Boats2 B, Reds
+WHERE Reds.bid = B.bid
+AND scount < 10
+```
 
+**Can have many queries in WITH**
+```SQL
+WITH Reds(bid, scount) AS
+(SELECT B.bid, COUNT(*)
+FROM Boats2 B, Reserves2 R
+WHERE R.bid = B.bid AND B.color = 'red'
+GROUP BY B.bid),
 
+UnpopularReds AS
+SELECT bname, scount
+FROM Boats2 B, Reds
+WHERE Reds.bid = B.bid
+AND scount < 10
 
+SELECT * FROM UnpopularReds;
+```
 
+*Example: ARGMAX GROUP BY*
+```SQL
+WITH maxratings(age, maxrating) AS
+(SELECT age, max(rating)
+FROM Sailors
+Group BY age)
 
+SELECT S.*
+FROM Sailors S, maxratings m
+WHERE S.age = m.age
+AND S.rating = m.maxrating;
+```
 
+***
+#### Null Values
++ Field values are sometimes unknown
+    + SQL provides a special value NULL
+    + Every data type can be NULL
++ The presence of null complicates many issues
+    + Selection predicates (WHERE)
+    + Aggregation
++ NULLs comes naturally from Outer joins
++ Rule: (x op NULL) evaluates to ... NULL!
+    + ```SQL
+      SELECT rating = NULL FROM sailors;
+      SELECT rating < NULL FROM sailors;
+      SELECT rating >= NULL FROM sailors;
+      ```
++ Explicit NULL Checks
+    + ```SQL
+      SELECT * FROM Sailors WHERE rating IS NULL;
+      SELECT * FROM Sailors WHERE rating IS NOT NULL;
+      ```
++ Do not output a tuple WHERE NULL
+    + ```SQL
+      SELECT * FROM sailors;
+      SELECT * FROM sailors WHERE rating > 8;
+      SELECT * FROM sailors WHERE rating <= 8;
+      ```
 
+**NULL in Boolean logic**
+|NOT|T|F|N|
+|-|-|-|-|
+| |F|T| N|
+
+|AND|T|F|N|
+|-|-|-|-|
+|T|T|F|N|
+|F|F|F|F|
+|N|N|F|N|
+
+|OR|T|F|N|
+|-|-|-|-|
+|T|T|T|T|
+|F|T|F|N|
+|N|T|N|N|
+
+**General rule: NULL can take on either T or F, so answer needs to accommodate either value.**
+
+**NULL and Aggregation**
+```SQL
+SELECT count(*) FROM sailors;
+SELECT sum(rating) FROM sailors;
+```
+
+**General rule: NULL column values are ignored by aggregate functions**
+
+***
+#### Summary
+A declarative language
++ somebody has to translate to algorithms 
++ The RDBMS implementer
